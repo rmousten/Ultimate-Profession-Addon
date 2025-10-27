@@ -1,0 +1,28 @@
+## Interface: 90205
+## Title: Ultimate Profession Guide
+## Notes: Optimizes profession leveling using AH and DE data
+## Author: Rasmus Mousten Christensen
+## Version: 1.0
+
+core/init.lua
+core/events.lua
+core/utils.lua
+core/config.lua
+
+database/db_loader.lua
+database/firstaid.lua
+database/cooking.lua
+database/blacksmithing.lua
+database/tailoring.lua
+
+scan/ah_scan.lua
+scan/tsm_integration.lua
+scan/disenchant_tables.lua
+
+logic/path_optimizer.lua
+logic/cost_calculator.lua
+logic/disenchant_value.lua
+
+ui/main_frame.lua
+ui/recipe_view.lua
+ui/scan_button.lua
