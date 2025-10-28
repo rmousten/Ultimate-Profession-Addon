@@ -57,7 +57,6 @@ local function PriceFromAuctionatorByName(itemName)
     return nil
 end
 
-UPA.price.providers = UPA.price.providers or {}
 UPA.price.providers["Auctionator"] = {
     Name = "Auctionator",
     GetMatPriceById = function(itemId) return PriceFromAuctionatorById(itemId) end,

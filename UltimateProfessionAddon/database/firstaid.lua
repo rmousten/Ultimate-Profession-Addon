@@ -84,6 +84,7 @@ local FirstAid = {
           vendorValue = "00g 10s 00c",
           source = "Train"
         },
+
         -- Anti-venoms (Classic)
         { name = "Anti-Venom", itemId = 6452,
           skillRange = { orange = 80, yellow = 115, green = 135, gray = 155 },

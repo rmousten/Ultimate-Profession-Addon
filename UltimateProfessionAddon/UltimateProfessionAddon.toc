@@ -3,7 +3,7 @@
 ## Title: Ultimate Profession Addon
 ## Notes: Calculates optimal First Aid leveling path using Auctionator prices
 ## Author: Hypricon
-## Version: 0.3
+## Version: 0.4.1
 ## SavedVariables: UPA_Saved
 ## OptionalDeps: Auctionator
 

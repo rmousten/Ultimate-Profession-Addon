@@ -13,7 +13,7 @@ function UPA.ui:EnsureProfButton(enable)
     if not TradeSkillFrame then return end
     if not self.calcBtn then
         local b = CreateFrame("Button", "UPA_CalcButton", TradeSkillFrame, "UIPanelButtonTemplate")
-        b:SetSize(100, 22)
+        b:SetSize(120, 26)
         b:SetText("Calculate")
         b:SetPoint("BOTTOMRIGHT", TradeSkillFrame, "BOTTOMRIGHT", -14, 14)
         b:SetScript("OnClick", function() UPA.ui:OpenResults() end)
@@ -29,54 +29,87 @@ end
 local function EnsureResultsFrame(self)
     if self.results then return end
     local f = CreateFrame("Frame", "UPA_ResultsFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(480, 480)
+    f:SetSize(720, 640)
     f:SetPoint("CENTER")
     f:Hide()
 
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    local TitleFont  = "GameFontHighlightLarge"
+    local HeaderFont = "GameFontHighlightLarge"
+    local BodyFont   = "GameFontNormalLarge"
+
+    f.title = f:CreateFontString(nil, "OVERLAY", TitleFont)
     f.title:SetPoint("TOP", 0, -8)
     f.title:SetText("Ultimate Profession Addon - First Aid Path")
 
-    f.prof = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.prof = f:CreateFontString(nil, "OVERLAY", HeaderFont)
     f.prof:SetPoint("TOPLEFT", 12, -36)
     f.prof:SetText("Profession: First Aid")
 
-    f.skillLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.skillLbl:SetPoint("LEFT", f.prof, "RIGHT", 18, 0)
+    f.skillLbl = f:CreateFontString(nil, "OVERLAY", HeaderFont)
+    f.skillLbl:SetPoint("LEFT", f.prof, "RIGHT", 24, 0)
     f.skillLbl:SetText("Skill:")
 
     f.skillBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    f.skillBox:SetSize(50, 22)
-    f.skillBox:SetPoint("LEFT", f.skillLbl, "RIGHT", 6, 0)
-    f.skillBox:SetAutoFocus(false); f.skillBox:SetNumeric(true); f.skillBox:SetNumber(1)
+    f.skillBox:SetSize(70, 26)
+    f.skillBox:SetPoint("LEFT", f.skillLbl, "RIGHT", 8, 0)
+    f.skillBox:SetAutoFocus(false)
+    f.skillBox:SetNumeric(true)
+    f.skillBox:SetNumber(1)
 
-    f.targetLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.targetLbl:SetPoint("LEFT", f.skillBox, "RIGHT", 10, 0)
+    f.targetLbl = f:CreateFontString(nil, "OVERLAY", HeaderFont)
+    f.targetLbl:SetPoint("LEFT", f.skillBox, "RIGHT", 16, 0)
     f.targetLbl:SetText("Target:")
 
     f.targetBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    f.targetBox:SetSize(50, 22)
-    f.targetBox:SetPoint("LEFT", f.targetLbl, "RIGHT", 6, 0)
-    f.targetBox:SetAutoFocus(false); f.targetBox:SetNumeric(true); f.targetBox:SetNumber(300)
+    f.targetBox:SetSize(70, 26)
+    f.targetBox:SetPoint("LEFT", f.targetLbl, "RIGHT", 8, 0)
+    f.targetBox:SetAutoFocus(false)
+    f.targetBox:SetNumeric(true)
+    f.targetBox:SetNumber(300)
 
     f.runBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.runBtn:SetSize(100, 22)
-    f.runBtn:SetPoint("LEFT", f.targetBox, "RIGHT", 12, 0)
+    f.runBtn:SetSize(140, 26)
+    f.runBtn:SetPoint("LEFT", f.targetBox, "RIGHT", 14, 0)
     f.runBtn:SetText("Calculate")
 
-    local scroll = CreateFrame("ScrollFrame", "UPA_Scroll", f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 12, -68)
-    scroll:SetPoint("BOTTOMRIGHT", -28, 48)
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(420, 360)
-    scroll:SetScrollChild(content)
+    -- Page controls (top-right)
+    f.pageLabel = f:CreateFontString(nil, "OVERLAY", HeaderFont)
+    f.pageLabel:SetPoint("TOPRIGHT", -180, -72)
+    f.prevBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.prevBtn:SetSize(100, 24); f.prevBtn:SetText("Previous")
+    f.prevBtn:SetPoint("RIGHT", f.pageLabel, "LEFT", -8, 0)
+    f.nextBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.nextBtn:SetSize(100, 24); f.nextBtn:SetText("Next")
+    f.nextBtn:SetPoint("LEFT", f.pageLabel, "RIGHT", 8, 0)
+
+    f.stepsPerPage = 5 -- show 5 steps per page (no scroll bar needed)
+    f.currentPage = 1
+
+    -- Steps container (no ScrollFrame needed since we paginate)
+    local content = CreateFrame("Frame", nil, f)
+    content:SetPoint("TOPLEFT", 12, -104)
+    content:SetSize(690, 300)
     f.content = content
 
-    f.totals = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    f.totals:SetPoint("BOTTOMLEFT", 12, 16)
+    -- Shopping list area (scrollable)
+    local shopScroll = CreateFrame("ScrollFrame", "UPA_ShopScroll", f, "UIPanelScrollFrameTemplate")
+    shopScroll:SetPoint("TOPLEFT", 12, -420)
+    shopScroll:SetPoint("BOTTOMRIGHT", -28, 56)
+    local shopContent = CreateFrame("Frame", nil, shopScroll)
+    shopContent:SetSize(680, 160)
+    shopScroll:SetScrollChild(shopContent)
+    f.shopContent = shopContent
 
-    f.missing = f:CreateFontString(nil, "OVERLAY", "GameFontRed")
-    f.missing:SetPoint("BOTTOMRIGHT", -16, 16)
+    -- Track created font strings so we can cleanly hide/reuse them (avoids overlap)
+    f.stepLines = {}
+    f.shopLines = {}
+
+    -- Totals + Missing
+    f.totals = f:CreateFontString(nil, "OVERLAY", HeaderFont)
+    f.totals:SetPoint("BOTTOMLEFT", 12, 20)
+
+    f.missing = f:CreateFontString(nil, "OVERLAY", BodyFont)
+    f.missing:SetPoint("BOTTOMRIGHT", -16, 20)
 
     f.runBtn:SetScript("OnClick", function()
         local skill = tonumber(f.skillBox:GetText()) or 1
@@ -84,61 +117,150 @@ local function EnsureResultsFrame(self)
         UPA.ui:RenderPath(f, skill, target)
     end)
 
+    f.prevBtn:SetScript("OnClick", function()
+        if not f.data then return end
+        if f.currentPage > 1 then f.currentPage = f.currentPage - 1 end
+        UPA.ui:RenderStepsPage(f, f.currentPage)
+    end)
+    f.nextBtn:SetScript("OnClick", function()
+        if not f.data then return end
+        local pages = math.max(1, math.ceil(#(f.data.steps or {}) / f.stepsPerPage))
+        if f.currentPage < pages then f.currentPage = f.currentPage + 1 end
+        UPA.ui:RenderStepsPage(f, f.currentPage)
+    end)
+
     self.results = f
 end
 
-local function ClearChildren(frame)
-    for _, child in ipairs({frame:GetChildren()}) do
-        child:Hide(); child:SetParent(nil)
+-- Helpers to manage font strings without overlap
+local function WipeFontList(list)
+    for i = 1, #list do
+        local fs = list[i]
+        if fs and fs.Hide then fs:Hide() end
+        list[i] = nil
+    end
+end
+
+local function NewLine(frame, list, font)
+    local fs = frame:CreateFontString(nil, "OVERLAY", font or "GameFontNormalLarge")
+    fs:SetJustifyH("LEFT")
+    fs:SetWidth(660)
+    fs:SetWordWrap(true)
+    fs:SetNonSpaceWrap(true)
+    table.insert(list, fs)
+    return fs
+end
+
+local function Money(copper)
+    return UPA.util.CopperToString(math.floor(copper or 0))
+end
+
+function UPA.ui:RenderStepsPage(f, page)
+    local data = f.data; if not data then return end
+    local steps = data.steps or {}
+
+    -- Clear previous lines
+    WipeFontList(f.stepLines)
+
+    local y = -4
+    local lineH = 26
+
+    local function addStep(text, font, r, g, b)
+        local fs = NewLine(f.content, f.stepLines, font)
+        fs:SetPoint("TOPLEFT", 4, y)
+        if r then fs:SetTextColor(r, g, b) end
+        fs:SetText(text)
+        fs:Show()
+        y = y - lineH
+    end
+
+    addStep(string.format("From %d to %d (final about %d)", f.startSkill or 1, data.target, data.finalSkill), "GameFontHighlightLarge", 1, 0.82, 0)
+    addStep("")
+
+    local totalSteps = #steps
+    local pages = math.max(1, math.ceil(totalSteps / f.stepsPerPage))
+    f.currentPage = math.max(1, math.min(page or 1, pages))
+    f.pageLabel:SetText(string.format("Page %d/%d", f.currentPage, pages))
+    if f.currentPage <= 1 then f.prevBtn:Disable() else f.prevBtn:Enable() end
+    if f.currentPage >= pages then f.nextBtn:Disable() else f.nextBtn:Enable() end
+
+    local startIndex = (f.currentPage - 1) * f.stepsPerPage + 1
+    local endIndex = math.min(totalSteps, startIndex + f.stepsPerPage - 1)
+
+    for i = startIndex, endIndex do
+        local step = steps[i]
+        addStep(string.format("%s x%d  [%d to %d]  (gain about %.1f)", step.name, step.crafts, step.from, step.to, step.expectedGain))
+        addStep(string.format("  Mats: %s  Learn: %s  Vendor: %s  |  Per-skill: %s",
+            Money(step.matCost), Money(step.learnCost), Money(step.vendorValue), Money(step.perSkill)), "GameFontNormalLarge", 0.85, 0.85, 0.85)
+        if step.anyMissingPrice then
+            addStep("  Missing price data for one or more materials. Open the Auction House to populate prices.", "GameFontNormalLarge", 1, 0.4, 0.4)
+        end
     end
 end
 
 function UPA.ui:RenderPath(f, skill, target)
     local data = UPA.calc:BuildPath("First Aid", skill, target)
-    local c = f.content
-    ClearChildren(c)
-    local y = -4
-    local lineHeight = 18
-
-    local function money(copper) return UPA.util.CopperToString(math.floor(copper or 0)) end
-
-    local function addText(txt, r,g,b)
-        local fs = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetPoint("TOPLEFT", 4, y)
-        if r then fs:SetTextColor(r,g,b) end
-        fs:SetText(txt)
-        y = y - lineHeight
-    end
+    f.data = data
+    f.startSkill = skill
 
     if not data or not data.steps or #data.steps == 0 then
-        addText("No path found.", 1, 0.25, 0.25)
+        WipeFontList(f.stepLines); f.pageLabel:SetText("")
         f.totals:SetText("Totals: —")
         f.missing:SetText("")
+        WipeFontList(f.shopLines)
         return
     end
 
-    addText(string.format("From %d to %d (final about %d)", skill, data.target, data.finalSkill), 1, 0.82, 0)
-    addText("")
+    f.currentPage = 1
+    self:RenderStepsPage(f, 1)
 
-    for _, step in ipairs(data.steps) do
-        addText(string.format("%s x%d  [%d to %d]  (gain about %.1f)", step.name, step.crafts, step.from, step.to, step.expectedGain))
-        addText(string.format("  Mats: %s  Learn: %s  Vendor: %s  |  Per-skill: %s",
-            money(step.matCost), money(step.learnCost), money(step.vendorValue), money(step.perSkill)), 0.8,0.8,0.8)
-        if step.anyMissingPrice then
-            addText("  Missing price data for one or more materials. Open the Auction House to populate prices.", 1, 0.4, 0.4)
-        end
-    end
-
-    addText("")
+    -- Totals
     f.totals:SetText(string.format("Totals  Mats: %s  Learn: %s  Vendor: %s  |  Net: %s",
-        money(data.totals.mat), money(data.totals.learn), money(data.totals.vendor),
-        money(data.totals.mat + data.totals.learn - data.totals.vendor)))
+        Money(data.totals.mat), Money(data.totals.learn), Money(data.totals.vendor),
+        Money(data.totals.mat + data.totals.learn - data.totals.vendor)))
 
+    -- Missing flag
     if data.missingPrices then
         f.missing:SetText("Missing price data detected. Open the Auction House to refresh Auctionator prices.")
     else
         f.missing:SetText("")
     end
+
+    -- Shopping list rendering
+    WipeFontList(f.shopLines)
+    local sy = -4
+    local lineH2 = 24
+    local function addShop(text, font, r, g, b)
+        local fs = NewLine(f.shopContent, f.shopLines, font)
+        fs:SetPoint("TOPLEFT", 4, sy)
+        if r then fs:SetTextColor(r, g, b) end
+        fs:SetText(text)
+        fs:Show()
+        sy = sy - lineH2
+    end
+
+    addShop("Shopping List (all materials):", "GameFontHighlightLarge", 1, 0.82, 0)
+
+    -- Sort shopping list by name
+    local items = {}
+    for name, info in pairs(data.shopping or {}) do
+        table.insert(items, {name=name, info=info})
+    end
+    table.sort(items, function(a,b) return a.name < b.name end)
+
+    local totalShop = 0
+    for _, it in ipairs(items) do
+        local name, info = it.name, it.info
+        addShop(string.format("- %s x%d  |  Unit: %s  Total: %s",
+            name, info.qty, Money(info.unit), Money(info.total)))
+        totalShop = totalShop + (info.total or 0)
+        if (info.unit or 0) == 0 then
+            addShop("  Missing price for this item. Open the Auction House to populate prices.", "GameFontNormalLarge", 1, 0.4, 0.4)
+        end
+    end
+
+    addShop("")
+    addShop(string.format("Shopping Total: %s", Money(totalShop)), "GameFontHighlightLarge", 0.9, 0.9, 0.9)
 end
 
 function UPA.ui:OpenResults()
