@@ -1,4 +1,3 @@
-
 local ADDON, UPA = ...
 
 UPA.ui = UPA.ui or {}
@@ -72,7 +71,6 @@ local function EnsureResultsFrame(self)
     f.runBtn:SetPoint("LEFT", f.targetBox, "RIGHT", 14, 0)
     f.runBtn:SetText("Calculate")
 
-    -- Page controls (top-right)
     f.pageLabel = f:CreateFontString(nil, "OVERLAY", HeaderFont)
     f.pageLabel:SetPoint("TOPRIGHT", -180, -72)
     f.prevBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -82,16 +80,14 @@ local function EnsureResultsFrame(self)
     f.nextBtn:SetSize(100, 24); f.nextBtn:SetText("Next")
     f.nextBtn:SetPoint("LEFT", f.pageLabel, "RIGHT", 8, 0)
 
-    f.stepsPerPage = 5 -- show 5 steps per page (no scroll bar needed)
+    f.stepsPerPage = 5
     f.currentPage = 1
 
-    -- Steps container (no ScrollFrame needed since we paginate)
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", 12, -104)
     content:SetSize(690, 300)
     f.content = content
 
-    -- Shopping list area (scrollable)
     local shopScroll = CreateFrame("ScrollFrame", "UPA_ShopScroll", f, "UIPanelScrollFrameTemplate")
     shopScroll:SetPoint("TOPLEFT", 12, -420)
     shopScroll:SetPoint("BOTTOMRIGHT", -28, 56)
@@ -100,11 +96,9 @@ local function EnsureResultsFrame(self)
     shopScroll:SetScrollChild(shopContent)
     f.shopContent = shopContent
 
-    -- Track created font strings so we can cleanly hide/reuse them (avoids overlap)
     f.stepLines = {}
     f.shopLines = {}
 
-    -- Totals + Missing
     f.totals = f:CreateFontString(nil, "OVERLAY", HeaderFont)
     f.totals:SetPoint("BOTTOMLEFT", 12, 20)
 
@@ -122,6 +116,7 @@ local function EnsureResultsFrame(self)
         if f.currentPage > 1 then f.currentPage = f.currentPage - 1 end
         UPA.ui:RenderStepsPage(f, f.currentPage)
     end)
+
     f.nextBtn:SetScript("OnClick", function()
         if not f.data then return end
         local pages = math.max(1, math.ceil(#(f.data.steps or {}) / f.stepsPerPage))
@@ -132,7 +127,6 @@ local function EnsureResultsFrame(self)
     self.results = f
 end
 
--- Helpers to manage font strings without overlap
 local function WipeFontList(list)
     for i = 1, #list do
         local fs = list[i]
@@ -159,7 +153,6 @@ function UPA.ui:RenderStepsPage(f, page)
     local data = f.data; if not data then return end
     local steps = data.steps or {}
 
-    -- Clear previous lines
     WipeFontList(f.stepLines)
 
     local y = -4
@@ -174,13 +167,10 @@ function UPA.ui:RenderStepsPage(f, page)
         y = y - lineH
     end
 
-    addStep(string.format("From %d to %d (final about %d)", f.startSkill or 1, data.target, data.finalSkill), "GameFontHighlightLarge", 1, 0.82, 0)
-    addStep("")
-
     local totalSteps = #steps
     local pages = math.max(1, math.ceil(totalSteps / f.stepsPerPage))
     f.currentPage = math.max(1, math.min(page or 1, pages))
-    f.pageLabel:SetText(string.format("Page %d/%d", f.currentPage, pages))
+    f.pageLabel:SetText(string.format("From %d to %d | Page %d/%d", f.startSkill or 1, data.target, f.currentPage, pages))
     if f.currentPage <= 1 then f.prevBtn:Disable() else f.prevBtn:Enable() end
     if f.currentPage >= pages then f.nextBtn:Disable() else f.nextBtn:Enable() end
 
@@ -189,11 +179,18 @@ function UPA.ui:RenderStepsPage(f, page)
 
     for i = startIndex, endIndex do
         local step = steps[i]
-        addStep(string.format("%s x%d  [%d to %d]  (gain about %.1f)", step.name, step.crafts, step.from, step.to, step.expectedGain))
-        addStep(string.format("  Mats: %s  Learn: %s  Vendor: %s  |  Per-skill: %s",
-            Money(step.matCost), Money(step.learnCost), Money(step.vendorValue), Money(step.perSkill)), "GameFontNormalLarge", 0.85, 0.85, 0.85)
-        if step.anyMissingPrice then
-            addStep("  Missing price data for one or more materials. Open the Auction House to populate prices.", "GameFontNormalLarge", 1, 0.4, 0.4)
+        if step.isReminder then
+            addStep(step.name, "GameFontNormalLarge", 1, 0.82, 0)
+        else
+            addStep(string.format("%s x%d [%d to %d] (gain about %.1f)",
+                step.name, step.crafts, step.from, step.to, step.expectedGain))
+            addStep(string.format(" Mats: %s Learn: %s Vendor: %s | Per-skill: %s",
+                Money(step.matCost), Money(step.learnCost), Money(step.vendorValue), Money(step.perSkill)),
+                "GameFontNormalLarge", 0.85, 0.85, 0.85)
+            if step.anyMissingPrice then
+                addStep(" Missing price data for one or more materials. Open the Auction House to populate prices.",
+                    "GameFontNormalLarge", 1, 0.4, 0.4)
+            end
         end
     end
 end
@@ -214,19 +211,16 @@ function UPA.ui:RenderPath(f, skill, target)
     f.currentPage = 1
     self:RenderStepsPage(f, 1)
 
-    -- Totals
     f.totals:SetText(string.format("Totals  Mats: %s  Learn: %s  Vendor: %s  |  Net: %s",
         Money(data.totals.mat), Money(data.totals.learn), Money(data.totals.vendor),
         Money(data.totals.mat + data.totals.learn - data.totals.vendor)))
 
-    -- Missing flag
     if data.missingPrices then
         f.missing:SetText("Missing price data detected. Open the Auction House to refresh Auctionator prices.")
     else
         f.missing:SetText("")
     end
 
-    -- Shopping list rendering
     WipeFontList(f.shopLines)
     local sy = -4
     local lineH2 = 24
@@ -241,7 +235,6 @@ function UPA.ui:RenderPath(f, skill, target)
 
     addShop("Shopping List (all materials):", "GameFontHighlightLarge", 1, 0.82, 0)
 
-    -- Sort shopping list by name
     local items = {}
     for name, info in pairs(data.shopping or {}) do
         table.insert(items, {name=name, info=info})
@@ -251,11 +244,11 @@ function UPA.ui:RenderPath(f, skill, target)
     local totalShop = 0
     for _, it in ipairs(items) do
         local name, info = it.name, it.info
-        addShop(string.format("- %s x%d  |  Unit: %s  Total: %s",
+        addShop(string.format("- %s x%d | Unit: %s Total: %s",
             name, info.qty, Money(info.unit), Money(info.total)))
         totalShop = totalShop + (info.total or 0)
         if (info.unit or 0) == 0 then
-            addShop("  Missing price for this item. Open the Auction House to populate prices.", "GameFontNormalLarge", 1, 0.4, 0.4)
+            addShop(" Missing price for this item. Open the Auction House to populate prices.", "GameFontNormalLarge", 1, 0.4, 0.4)
         end
     end
 
