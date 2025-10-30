@@ -1,0 +1,25 @@
+
+## Interface: 11501
+## Title: Ultimate Profession Addon
+## Notes: Calculates optimal First Aid leveling path using Auctionator prices
+## Author: Hypricon
+## Version: 0.4.1
+## SavedVariables: UPA_Saved
+## OptionalDeps: Auctionator
+
+# Core
+core/init.lua
+core/events.lua
+
+# Database
+database/firstaid.lua
+
+# Logic
+logic/calc.lua
+
+# Scan / Pricing (Auctionator only)
+scan/providers.lua
+scan/auctionator.lua
+
+# UI
+ui/frame.lua
