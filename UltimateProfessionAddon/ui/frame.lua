@@ -188,6 +188,9 @@ function UPA.ui:RenderStepsPage(f, page)
     local endIndex = math.min(totalSteps, startIndex + f.stepsPerPage - 1)
 
     for i = startIndex, endIndex do
+if f.startSkill <= 75 and data.target >= 75 then addStep("Reminder: Upgrade your First Aid profession to Journeyman (75).", "GameFontNormalLarge", 0.4, 0.8, 1) end
+if f.startSkill <= 150 and data.target >= 150 then addStep("Reminder: Upgrade your First Aid profession to Expert (150).", "GameFontNormalLarge", 0.4, 0.8, 1) end
+if f.startSkill <= 225 and data.target >= 225 then addStep("Reminder: Upgrade your First Aid profession to Artisan (225).", "GameFontNormalLarge", 0.4, 0.8, 1) end
         local step = steps[i]
         addStep(string.format("%s x%d  [%d to %d]  (gain about %.1f)", step.name, step.crafts, step.from, step.to, step.expectedGain))
         addStep(string.format("  Mats: %s  Learn: %s  Vendor: %s  |  Per-skill: %s",
@@ -240,6 +243,9 @@ function UPA.ui:RenderPath(f, skill, target)
     end
 
     addShop("Shopping List (all materials):", "GameFontHighlightLarge", 1, 0.82, 0)
+addShop("- Expert First Aid - Under Wraps x1  |  Unit: Unknown  Total: Unknown", "GameFontNormalLarge", 0.85, 0.85, 0.85)
+addShop("- Manual: Heavy Silk Bandage x1  |  Unit: Unknown  Total: Unknown", "GameFontNormalLarge", 0.85, 0.85, 0.85)
+addShop("- Manual: Mageweave Bandage x1  |  Unit: Unknown  Total: Unknown", "GameFontNormalLarge", 0.85, 0.85, 0.85)
 
     -- Sort shopping list by name
     local items = {}
