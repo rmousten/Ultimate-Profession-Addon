@@ -1,4 +1,3 @@
-
 local ADDON, UPA = ...
 
 local P = { orange = 1.0, yellow = 0.5, green = 0.2, gray = 0.0 }
@@ -162,6 +161,57 @@ function UPA.calc:BuildPath(profName, currentSkill, targetSkill)
         info.total = (unit or 0) * info.qty
         if (unit or 0) == 0 then missingAny = true end
     end
+
+    -- Safe price lookup that won't throw if provider API differs or is nil.
+    local function SafeLookupPrice(provider, key)
+        if not provider then return nil end
+        -- common provider function names to try (both method and function styles)
+        local tryNames = {"GetMatPrice", "GetRecipePrice", "GetMatPriceById", "GetPrice"}
+        for _, fname in ipairs(tryNames) do
+            local f = provider[fname]
+            if type(f) == "function" then
+                -- try as method (provider:Func(key))
+                local ok, res = pcall(f, provider, key)
+                if ok and type(res) == "number" and res > 0 then return res end
+                -- try as plain function (Func(key))
+                ok, res = pcall(f, key)
+                if ok and type(res) == "number" and res > 0 then return res end
+            end
+        end
+        return nil
+    end
+
+    local function AddFixedItemsToShopping(data)
+        if not data then return end
+        data.shopping = data.shopping or {}
+
+        local provider = (UPA and UPA.GetPriceProvider) and UPA:GetPriceProvider()
+
+        local fixed = {
+            { name = "Expert First Aid - Under Wraps", qty = 1 },
+            { name = "Manual: Heavy Silk Bandage",        qty = 1 },
+            { name = "Manual: Mageweave Bandage",        qty = 1 },
+        }
+
+        for _, item in ipairs(fixed) do
+            local unitPrice = SafeLookupPrice(provider, item.name) or 0
+
+            local entry = data.shopping[item.name]
+            if not entry then
+                data.shopping[item.name] = {
+                    qty = item.qty,
+                    unit = unitPrice,
+                    total = unitPrice * item.qty,
+                }
+            else
+                entry.qty = (entry.qty or 0) + item.qty
+                entry.unit = entry.unit or unitPrice
+                entry.total = (entry.unit or 0) * entry.qty
+            end
+        end
+    end
+
+    AddFixedItemsToShopping(data)
 
     return { steps = path, totals = totals, finalSkill = currentSkill, target = targetSkill, missingPrices = missingAny, shopping = shopping }
 end

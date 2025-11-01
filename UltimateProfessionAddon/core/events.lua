@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global
 
 local ADDON_NAME, UPA = ...
 
