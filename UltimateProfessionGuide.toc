@@ -1,4 +1,4 @@
-## Interface: 90205
+## Interface: 11501
 ## Title: Ultimate Profession Guide
 ## Notes: Optimizes profession leveling using AH and DE data
 ## Author: Rasmus Mousten Christensen

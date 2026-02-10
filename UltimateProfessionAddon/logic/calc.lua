@@ -5,59 +5,141 @@ UPA.calc = UPA.calc or {}
 UPA.calc.ExpectedSkillup = P
 
 local function colorAt(skill, r)
-    if skill < r.yellow then return "orange"
-    elseif skill < r.green then return "yellow"
-    elseif skill < r.gray then return "green"
+    if not r then return "gray" end
+    if skill < (r.yellow or math.huge) then return "orange"
+    elseif skill < (r.green or math.huge) then return "yellow"
+    elseif skill < (r.gray or math.huge) then return "green"
     else return "gray" end
 end
 
 local function levelsUntilNextColor(skill, r)
+    if not r then return 0 end
     local c = colorAt(skill, r)
-    if c == "orange" then return math.max(0, r.yellow - skill)
-    elseif c == "yellow" then return math.max(0, r.green - skill)
-    elseif c == "green" then return math.max(0, r.gray - skill) end
+    if c == "orange" then return math.max(0, (r.yellow or skill) - skill)
+    elseif c == "yellow" then return math.max(0, (r.green or skill) - skill)
+    elseif c == "green" then return math.max(0, (r.gray or skill) - skill) end
     return 0
 end
 
 local function matUnitPrice(recipe, provider)
     local total, missing = 0, false
     for name, qty in pairs(recipe.materials or {}) do
-        local id = recipe.materialIds and recipe.materialIds[name] or nil
-        local unit
-        if id and provider.GetMatPriceById then unit = provider.GetMatPriceById(id) end
-        if not unit and provider.GetMatPrice then unit = provider.GetMatPrice(name) end
-        if not unit then missing = true; unit = 0 end
-        total = total + (unit * qty)
+        local unit = nil
+        if provider and provider.GetMatPrice then
+            pcall(function() unit = provider:GetMatPrice(name) end)
+        end
+        if not unit or unit == 0 then missing = true end
+        total = total + ((unit or 0) * qty)
     end
     return total, missing
 end
 
-local function learnCostCopper(recipe)
+local function learnCostCopper(recipe, provider)
     if recipe.source == "Train" then
-        return UPA.util.MoneyStringToCopper(recipe.trainingCost)
+        return UPA.util.MoneyStringToCopper(recipe.trainingCost or "0c")
+    elseif recipe.source == "Buy recipe" then
+        local recipePrice = nil
+        if provider then
+            -- Prefer itemId if present, fallback to name
+            if recipe.itemId and provider.GetMatPriceById then
+                local ok, res = pcall(provider.GetMatPriceById, provider, recipe.itemId)
+                if ok and type(res) == "number" and res > 0 then recipePrice = res end
+            end
+            if (not recipePrice or recipePrice == 0) and provider.GetMatPrice then
+                local ok, res = pcall(provider.GetMatPrice, provider, recipe.name)
+                if ok and type(res) == "number" and res > 0 then recipePrice = res end
+            end
+            if (not recipePrice or recipePrice == 0) and provider.GetRecipePrice then
+                local ok, res = pcall(provider.GetRecipePrice, provider, recipe.name)
+                if ok and type(res) == "number" and res > 0 then recipePrice = res end
+            end
+        end
+        return recipePrice or 0
     end
     return 0
 end
 
 local function vendorValueCopper(recipe)
-    return UPA.util.MoneyStringToCopper(recipe.vendorValue or "00g 00s 00c")
+    return UPA.util.MoneyStringToCopper(recipe.vendorValue or "0c")
+end
+
+-- Safe price lookup for manuals/recipes.
+local function SafeLookupPrice(provider, itemName, itemId)
+    if not provider then return nil end
+
+    if itemId and provider.GetMatPriceById then
+        local ok, res = pcall(provider.GetMatPriceById, provider, itemId)
+        if ok and type(res) == "number" and res > 0 then return res end
+    end
+    if itemName and provider.GetMatPrice then
+        local ok, res = pcall(provider.GetMatPrice, provider, itemName)
+        if ok and type(res) == "number" and res > 0 then return res end
+    end
+    if itemName and provider.GetRecipePrice then
+        local ok, res = pcall(provider.GetRecipePrice, provider, itemName)
+        if ok and type(res) == "number" and res > 0 then return res end
+    end
+    -- Try generic names if your provider exposes them
+    if itemId and provider.GetPriceByItemID then
+        local ok, res = pcall(provider.GetPriceByItemID, provider, itemId)
+        if ok and type(res) == "number" and res > 0 then return res end
+    end
+    if itemName and provider.GetPriceByName then
+        local ok, res = pcall(provider.GetPriceByName, provider, itemName)
+        if ok and type(res) == "number" and res > 0 then return res end
+    end
+
+    return nil
+end
+
+local function AddFixedItemsToShopping(data)
+    if not data then return end
+    data.shopping = data.shopping or {}
+
+    local provider = (UPA and UPA.GetPriceProvider) and UPA:GetPriceProvider()
+
+    -- Classic IDs for manuals
+    local fixed = {
+        { name = "Expert First Aid - Under Wraps", qty = 1, id = 16112 },
+        { name = "Manual: Heavy Silk Bandage",     qty = 1, id = 16113 },
+        { name = "Manual: Mageweave Bandage",      qty = 1, id = 16084 },
+    }
+
+    for _, item in ipairs(fixed) do
+        local unitPrice = SafeLookupPrice(provider, item.name, item.id) or 0
+        local entry = data.shopping[item.name]
+        if not entry then
+            data.shopping[item.name] = {
+                qty = item.qty,
+                unit = unitPrice,
+                total = unitPrice * item.qty,
+            }
+        else
+            entry.qty = (entry.qty or 0) + item.qty
+            entry.unit = entry.unit or unitPrice
+            entry.total = (entry.unit or 0) * entry.qty
+        end
+    end
 end
 
 function UPA.calc:ScoreRecipe(recipe, currentSkill, provider)
-    local range = recipe.skillRange; if not range then return end
-    if currentSkill < (range.orange or 0) then return end
+    -- sanity
+    if not recipe then return nil end
+    local range = recipe.skillRange
+    if not range then return nil end
+    if currentSkill < (range.orange or 0) then return nil end
 
     local clr = colorAt(currentSkill, range)
-    local p = P[clr] or 0; if p <= 0 then return end
+    local p = P[clr] or 0
+    if p <= 0 then return nil end
 
     local skillAvail = levelsUntilNextColor(currentSkill, range)
     if skillAvail <= 0 then skillAvail = 1 end
 
     local mat, missing = matUnitPrice(recipe, provider)
     local vendor = vendorValueCopper(recipe)
-    local learn = learnCostCopper(recipe)
+    local learn = learnCostCopper(recipe, provider)
 
-    -- Expected cost per skill (copper)
     local effectiveMatCost = math.max(0, mat - vendor)
     local perSkillFromMats = effectiveMatCost / p
     local perSkillFromLearn = learn / skillAvail
@@ -65,153 +147,110 @@ function UPA.calc:ScoreRecipe(recipe, currentSkill, provider)
 
     return {
         name = recipe.name,
+        skillRange = range,
         color = clr,
-        p = p,
-        skillAvail = skillAvail,
+        probability = p,
+        skillsAvailable = skillAvail,
         matCost = mat,
-        vendorVal = vendor,
+        vendorValue = vendor,
         learnCost = learn,
-        perSkill = perSkillTotal,           -- float copper
-        perSkillCopper = math.floor(perSkillTotal + 0.5), -- integer copper for UI
-        anyMissingPrice = missing,
-        recipe = recipe,
+        perSkill = perSkillTotal,
+        anyMissingPrice = missing or (recipe.source == "Buy recipe" and learn == 0)
     }
 end
 
 function UPA.calc:BuildPath(profName, currentSkill, targetSkill)
-    local prof = UPA.professions[profName]; if not prof then return nil, "Unknown profession" end
+    local prof = UPA.professions and UPA.professions[profName]
+    if not prof then
+        return { steps = {}, totals = { mat = 0, learn = 0, vendor = 0 }, finalSkill = currentSkill, target = targetSkill or 300, missingPrices = true, shopping = {} }
+    end
+
     targetSkill = targetSkill or 300
     local provider = UPA:GetPriceProvider()
 
     local path, totals = {}, { mat = 0, learn = 0, vendor = 0, score = 0 }
     local learnedOnce, missingAny, shopping = {}, false, {}
 
-    local safety = 0
-    while (currentSkill < targetSkill) and (safety < 500) do
-        safety = safety + 1
-        local best, bestRecipe
-        for _, r in ipairs(prof.recipes) do
-            local rng = r.skillRange
-            if rng and currentSkill >= (rng.orange or 0) then
-                local row = self:ScoreRecipe(r, currentSkill, provider)
-                if row and ((not best) or (row.perSkill < best.perSkill)) then
-                    best, bestRecipe = row, r
-                end
+    -- Greedy selection by lowest per-skill cost
+    while currentSkill < targetSkill do
+        local best, bestScore = nil, math.huge
+        for _, r in ipairs(prof.recipes or {}) do
+            local s = self:ScoreRecipe(r, currentSkill, provider)
+            if s and s.perSkill > 0 and s.perSkill < bestScore then
+                bestScore, best = s.perSkill, s
             end
         end
-        if not bestRecipe then break end
 
-        local r = bestRecipe
-        local p = best.p
-        local deltaToNext = levelsUntilNextColor(currentSkill, r.skillRange)
-        local remaining = targetSkill - currentSkill
-        local goalDelta = (deltaToNext > 0) and math.min(deltaToNext, remaining) or remaining
-        if goalDelta <= 0 then goalDelta = remaining end
-        local crafts = math.max(1, math.ceil(goalDelta / p))
+        if not best then break end
 
-        local matUnit, missUnit = matUnitPrice(r, provider)
-        local vendorUnit = vendorValueCopper(r)
         local learn = 0
-        if not learnedOnce[r.name] then learnedOnce[r.name] = true; learn = learnCostCopper(r) end
-
-        local matCostTotal = matUnit * crafts
-        local vendorTotal  = vendorUnit * crafts
-        local expectedGain = p * crafts
-        local nextSkill = math.min(targetSkill, currentSkill + expectedGain)
-        if missUnit then missingAny = true end
-
-        for name, qty in pairs(r.materials or {}) do
-            local id = r.materialIds and r.materialIds[name] or nil
-            local entry = shopping[name]
-            if not entry then entry = { qty = 0, id = id }; shopping[name] = entry end
-            entry.qty = entry.qty + (qty * crafts)
+        if not learnedOnce[best.name] then
+            learnedOnce[best.name] = true
+            learn = best.learnCost or 0
         end
 
-        table.insert(path, {
-            name = r.name,
-            color = best.color,
-            crafts = crafts,
+        local from = currentSkill
+        local craftsNeeded = math.ceil(best.skillsAvailable / best.probability)
+        craftsNeeded = math.max(craftsNeeded, 1)
+        local expectedGain = craftsNeeded * best.probability
+
+        local step = {
+            name = best.name,
+            from = from,
+            to = math.min(from + math.floor(expectedGain), targetSkill),
+            crafts = craftsNeeded,
             expectedGain = expectedGain,
-            from = currentSkill,
-            to = nextSkill,
-            matCost = matCostTotal,
+            matCost = best.matCost * craftsNeeded,
+            vendorValue = best.vendorValue * craftsNeeded,
             learnCost = learn,
-            vendorValue = vendorTotal,
             perSkill = best.perSkill,
-            perSkillCopper = best.perSkillCopper,
-            anyMissingPrice = missUnit,
-            breakdown = { matUnit = matUnit, vendorUnit = vendorUnit, p = p },
-        })
+            anyMissingPrice = best.anyMissingPrice or false
+        }
 
-        totals.mat = totals.mat + matCostTotal
-        totals.learn = totals.learn + learn
-        totals.vendor = totals.vendor + vendorTotal
-        totals.score = totals.score + (matCostTotal - vendorTotal + learn)
+        table.insert(path, step)
+        totals.mat = totals.mat + step.matCost
+        totals.learn = totals.learn + step.learnCost
+        totals.vendor = totals.vendor + step.vendorValue
+        totals.score = totals.score + (step.matCost + step.learnCost - step.vendorValue)
 
-        currentSkill = nextSkill
+        if step.anyMissingPrice then missingAny = true end
+
+        -- add materials for shopping list
+        local rec
+        for _, r in ipairs(prof.recipes or {}) do
+            if r.name == best.name then rec = r; break end
+        end
+        if rec then
+            for mat, qty in pairs(rec.materials or {}) do
+                shopping[mat] = shopping[mat] or { qty = 0 }
+                shopping[mat].qty = shopping[mat].qty + (qty * craftsNeeded)
+            end
+        end
+
+        currentSkill = step.to
     end
 
     -- attach unit prices to shopping
-    local provider2 = UPA:GetPriceProvider()
     for name, info in pairs(shopping) do
-        local unit
-        if info.id and provider2.GetMatPriceById then unit = provider2.GetMatPriceById(info.id) end
-        if not unit and provider2.GetMatPrice then unit = provider2.GetMatPrice(name) end
+        local unit = nil
+        if provider and provider.GetMatPrice then
+            local ok, res = pcall(provider.GetMatPrice, provider, name)
+            if ok and type(res) == "number" then unit = res end
+        end
         info.unit = unit or 0
-        info.total = (unit or 0) * info.qty
+        info.total = (info.unit or 0) * (info.qty or 0)
         if (unit or 0) == 0 then missingAny = true end
     end
 
-    -- Safe price lookup that won't throw if provider API differs or is nil.
-    local function SafeLookupPrice(provider, key)
-        if not provider then return nil end
-        -- common provider function names to try (both method and function styles)
-        local tryNames = {"GetMatPrice", "GetRecipePrice", "GetMatPriceById", "GetPrice"}
-        for _, fname in ipairs(tryNames) do
-            local f = provider[fname]
-            if type(f) == "function" then
-                -- try as method (provider:Func(key))
-                local ok, res = pcall(f, provider, key)
-                if ok and type(res) == "number" and res > 0 then return res end
-                -- try as plain function (Func(key))
-                ok, res = pcall(f, key)
-                if ok and type(res) == "number" and res > 0 then return res end
-            end
-        end
-        return nil
-    end
+    -- Always add the manuals so the UI shows useful data even if steps are empty
+    AddFixedItemsToShopping({ shopping = shopping })
 
-    local function AddFixedItemsToShopping(data)
-        if not data then return end
-        data.shopping = data.shopping or {}
-
-        local provider = (UPA and UPA.GetPriceProvider) and UPA:GetPriceProvider()
-
-        local fixed = {
-            { name = "Expert First Aid - Under Wraps", qty = 1 },
-            { name = "Manual: Heavy Silk Bandage",        qty = 1 },
-            { name = "Manual: Mageweave Bandage",        qty = 1 },
-        }
-
-        for _, item in ipairs(fixed) do
-            local unitPrice = SafeLookupPrice(provider, item.name) or 0
-
-            local entry = data.shopping[item.name]
-            if not entry then
-                data.shopping[item.name] = {
-                    qty = item.qty,
-                    unit = unitPrice,
-                    total = unitPrice * item.qty,
-                }
-            else
-                entry.qty = (entry.qty or 0) + item.qty
-                entry.unit = entry.unit or unitPrice
-                entry.total = (entry.unit or 0) * entry.qty
-            end
-        end
-    end
-
-    AddFixedItemsToShopping(data)
-
-    return { steps = path, totals = totals, finalSkill = currentSkill, target = targetSkill, missingPrices = missingAny, shopping = shopping }
+    return {
+        steps = path,
+        totals = totals,
+        finalSkill = currentSkill,
+        target = targetSkill,
+        missingPrices = missingAny,
+        shopping = shopping
+    }
 end
